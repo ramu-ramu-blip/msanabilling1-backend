@@ -94,6 +94,12 @@ const productSchema = new mongoose.Schema(
     }
 );
 
+// Additional indexes for performance optimization
+productSchema.index({ isActive: 1, brand: 1 }); // For active products sorted by brand
+productSchema.index({ isActive: 1, stock: 1 }); // For low stock queries
+productSchema.index({ schedule: 1, isActive: 1 }); // For schedule filtering
+productSchema.index({ name: 'text', brand: 'text', generic: 'text', sku: 'text' }); // Text search index
+
 // Pre-save to set 'name' for backward compatibility
 productSchema.pre('save', function (next) {
     if (!this.name) {

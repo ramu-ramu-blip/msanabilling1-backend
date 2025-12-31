@@ -23,12 +23,15 @@ export const register = async (req, res, next) => {
             return res.status(400).json({ message: 'User already exists' });
         }
 
+        // Validate role - only allow admin or staff
+        const validRole = role && (role === 'admin' || role === 'staff') ? role : 'staff';
+        
         // Create user
         const user = await User.create({
             name,
             email,
             password,
-            role: role || 'staff',
+            role: validRole,
         });
 
         logger.info(`New user registered: ${email} with role ${user.role}`);
@@ -84,6 +87,11 @@ export const login = async (req, res, next) => {
 
         if (!isMatch) {
             return res.status(401).json({ message: 'Invalid credentials' });
+        }
+
+        // Allow admin, staff, and pharmacy roles to login (pharmacy for backward compatibility)
+        if (user.role !== 'admin' && user.role !== 'staff' && user.role !== 'pharmacy') {
+            return res.status(403).json({ message: 'Access denied. Only admin, staff, and pharmacy can login.' });
         }
 
         logger.info(`User logged in: ${email}`);
@@ -170,9 +178,19 @@ export const updateUser = async (req, res, next) => {
             return res.status(404).json({ message: 'User not found' });
         }
 
+        // Validate role - only allow admin or staff
+        let validRole = user.role;
+        if (role) {
+            if (role === 'admin' || role === 'staff') {
+                validRole = role;
+            } else {
+                return res.status(400).json({ message: 'Invalid role. Only admin and staff are allowed.' });
+            }
+        }
+
         user.name = name || user.name;
         user.email = email || user.email;
-        user.role = role || user.role;
+        user.role = validRole;
         user.isActive = isActive !== undefined ? isActive : user.isActive;
 
         await user.save();

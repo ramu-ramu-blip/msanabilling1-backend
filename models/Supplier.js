@@ -50,8 +50,9 @@ const supplierSchema = new mongoose.Schema(
     }
 );
 
-// Index for faster queries
+// Indexes for faster queries
 supplierSchema.index({ name: 1 });
+supplierSchema.index({ isActive: 1, name: 1 }); // For filtering active suppliers
 
 const Supplier = mongoose.model('Supplier', supplierSchema);
 

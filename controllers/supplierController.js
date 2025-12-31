@@ -24,7 +24,10 @@ export const getSuppliers = async (req, res, next) => {
             query.isActive = isActive === 'true';
         }
 
-        const suppliers = await Supplier.find(query).sort({ name: 1 });
+        const suppliers = await Supplier.find(query)
+            .sort({ name: 1 })
+            .lean()
+            .limit(1000); // Limit to prevent large payloads
 
         res.json({
             success: true,

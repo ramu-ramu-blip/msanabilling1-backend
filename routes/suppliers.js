@@ -13,8 +13,8 @@ const router = express.Router();
 
 router.get('/', protect, getSuppliers);
 router.get('/:id', protect, getSupplier);
-router.post('/', protect, authorize('admin', 'manager'), createSupplier);
-router.put('/:id', protect, authorize('admin', 'manager'), updateSupplier);
-router.delete('/:id', protect, authorize('admin' , 'manager'), deleteSupplier);
+router.post('/', protect, authorize('admin', 'staff', 'pharmacy'), createSupplier);
+router.put('/:id', protect, authorize('admin', 'staff', 'pharmacy'), updateSupplier);
+router.delete('/:id', protect, authorize('admin', 'staff', 'pharmacy'), deleteSupplier);
 
 export default router;

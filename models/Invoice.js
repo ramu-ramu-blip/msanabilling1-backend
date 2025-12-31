@@ -96,6 +96,18 @@ const invoiceSchema = new mongoose.Schema(
             default: 'CASH'
         },
 
+        // Bill Type and PDF Type
+        billType: {
+            type: String,
+            enum: ['TAX_INVOICE', 'RETAIL_INVOICE', 'CASH_MEMO', 'BILL'],
+            default: 'TAX_INVOICE'
+        },
+        pdfType: {
+            type: String,
+            enum: ['STANDARD', 'COMPACT', 'DETAILED'],
+            default: 'STANDARD'
+        },
+
         // GST Compliance Fields
         gstin: {
             type: String,
@@ -187,10 +199,13 @@ invoiceSchema.pre('save', async function (next) {
     next();
 });
 
-// Index
+// Indexes for performance optimization
 // invoiceNo index is automatically created by unique: true
 invoiceSchema.index({ patientName: 1 });
 invoiceSchema.index({ createdAt: -1 });
+invoiceSchema.index({ status: 1, createdAt: -1 }); // For filtering by status
+invoiceSchema.index({ mode: 1, createdAt: -1 }); // For payment method queries
+invoiceSchema.index({ 'createdBy': 1, createdAt: -1 }); // For user-specific queries
 
 const Invoice = mongoose.model('Invoice', invoiceSchema);
 

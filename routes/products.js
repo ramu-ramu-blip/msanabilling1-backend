@@ -25,10 +25,10 @@ router.get('/alerts/low-stock', protect, getLowStockProducts);
 router.get('/alerts/expiring', protect, getExpiringProducts);
 router.get('/', protect, getProducts);
 router.get('/:id', protect, getProduct);
-router.post('/', protect, authorize('admin', 'manager', 'pharmacy'), createProduct);
-router.put('/:id', protect, authorize('admin', 'pharmacy', 'manager'), updateProduct);
-router.delete('/:id', protect, authorize('admin', 'manager'), deleteProduct);
-router.patch('/:id/stock', protect, authorize('admin', 'pharmacy', 'manager'), updateStock);
-router.post('/bulk', protect, authorize('admin', 'manager', 'pharmacy'), upload.single('file'), bulkImportProducts);
+router.post('/', protect, authorize('admin', 'staff', 'pharmacy'), createProduct);
+router.put('/:id', protect, authorize('admin', 'staff', 'pharmacy'), updateProduct);
+router.delete('/:id', protect, authorize('admin', 'staff', 'pharmacy'), deleteProduct);
+router.patch('/:id/stock', protect, authorize('admin', 'staff', 'pharmacy'), updateStock);
+router.post('/bulk', protect, authorize('admin', 'staff', 'pharmacy'), upload.single('file'), bulkImportProducts);
 
 export default router;

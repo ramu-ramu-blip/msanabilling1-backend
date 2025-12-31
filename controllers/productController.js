@@ -36,7 +36,9 @@ export const getProducts = async (req, res, next) => {
         }
 
         const products = await Product.find(query)
-            .sort({ brand: 1 });
+            .sort({ brand: 1 })
+            .lean() // Use lean() for better performance
+            .limit(5000); // Limit results to prevent large payloads
 
         res.json({
             success: true,

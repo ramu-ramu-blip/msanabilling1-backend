@@ -146,7 +146,9 @@ export const getProductSalesReport = async (req, res, next) => {
 export const getInventoryReport = async (req, res, next) => {
     try {
         const products = await Product.find({ isActive: true })
-            .sort({ stock: 1 }); // Supplier not in Product schema anymore? Removed populate for now.
+            .sort({ stock: 1 })
+            .lean()
+            .limit(1000); // Limit to prevent large payloads
 
         const totalProducts = products.length;
         const lowStockProducts = products.filter(
@@ -238,7 +240,8 @@ export const getDashboardStats = async (req, res, next) => {
         const recentInvoices = await Invoice.find()
             .populate('createdBy', 'name')
             .sort({ createdAt: -1 })
-            .limit(5);
+            .limit(5)
+            .lean();
 
         res.json({
             success: true,
@@ -283,7 +286,9 @@ export const getDaySalesReport = async (req, res, next) => {
             status: 'PAID'
         })
             .populate('createdBy', 'name')
-            .sort({ createdAt: -1 });
+            .sort({ createdAt: -1 })
+            .lean()
+            .limit(1000); // Limit to prevent large payloads
 
         const summary = {
             totalRevenue: invoices.reduce((sum, inv) => sum + inv.netPayable, 0),

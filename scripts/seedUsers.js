@@ -25,34 +25,16 @@ const seedUsers = async () => {
 
     const users = [
         {
-            name: 'Pharmacy Staff',
-            email: 'pharmacy@msana.com',
-            password: 'password123',
-            role: 'pharmacy',
-        },
-        {
-            name: 'Hospital Staff',
-            email: 'hospital@msana.com',
-            password: 'password123',
-            role: 'hospital',
-        },
-        {
-            name: 'Pharmacy Manager',
-            email: 'pharmacy_manager@msana.com',
-            password: 'password123',
-            role: 'manager',
-        },
-        {
-            name: 'Discharge Staff',
-            email: 'discharge@msana.com',
-            password: 'password123',
-            role: 'discharge',
-        },
-        {
             name: 'Admin User',
             email: 'admin@msana.com',
             password: 'admin123',
             role: 'admin',
+        },
+        {
+            name: 'Staff User',
+            email: 'staff@msana.com',
+            password: 'staff123',
+            role: 'staff',
         }
     ];
 
@@ -61,12 +43,22 @@ const seedUsers = async () => {
             const exists = await User.findOne({ email: user.email });
             if (exists) {
                 // Update role if exists (in case we run this to fix roles)
-                exists.role = user.role;
-                await exists.save();
-                console.log(`Updated user: ${user.email}`);
+                // Only update if role is valid (admin or staff)
+                if (user.role === 'admin' || user.role === 'staff') {
+                    exists.role = user.role;
+                    await exists.save();
+                    console.log(`Updated user: ${user.email}`);
+                } else {
+                    console.log(`Skipping invalid role for user: ${user.email}`);
+                }
             } else {
-                await User.create(user);
-                console.log(`Created user: ${user.email}`);
+                // Only create if role is valid
+                if (user.role === 'admin' || user.role === 'staff') {
+                    await User.create(user);
+                    console.log(`Created user: ${user.email}`);
+                } else {
+                    console.log(`Skipping invalid role for user: ${user.email}`);
+                }
             }
         }
         console.log('Users seeded successfully');

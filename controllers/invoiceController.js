@@ -3,7 +3,6 @@ import Product from '../models/Product.js';
 import Batch from '../models/Batch.js'; // Needed for stock checks
 import logger from '../utils/logger.js';
 import AuditLog from '../models/AuditLog.js';
-import pdfService from '../services/pdfService.js';
 
 // @desc    Get all invoices
 // @route   GET /api/invoices
@@ -38,7 +37,9 @@ export const getInvoices = async (req, res, next) => {
         const invoices = await Invoice.find(query)
             .populate('createdBy', 'name email')
             .populate('items.drug', 'name brand generic')
-            .sort({ createdAt: -1 });
+            .sort({ createdAt: -1 })
+            .lean() // Use lean() for better performance (returns plain JS objects)
+            .limit(1000); // Limit results to prevent large payloads
 
         res.json({
             success: true,
@@ -72,30 +73,6 @@ export const getInvoice = async (req, res, next) => {
     }
 };
 
-// @desc    Generate Invoice PDF
-// @route   GET /api/invoices/:id/pdf
-// @access  Private
-export const getInvoicePDF = async (req, res, next) => {
-    try {
-        const invoice = await Invoice.findById(req.params.id);
-
-        if (!invoice) {
-            return res.status(404).json({ message: 'Invoice not found' });
-        }
-
-        const pdfPath = await pdfService.generateInvoicePDF(invoice);
-
-        res.download(pdfPath, `invoice-${invoice.invoiceNo}.pdf`, (err) => {
-            if (err) {
-                logger.error(`Error downloading PDF: ${err.message}`);
-                next(err);
-            }
-        });
-    } catch (error) {
-        next(error);
-    }
-};
-
 // @desc    Create invoice
 // @route   POST /api/invoices
 // @access  Private (Admin/Staff)
@@ -105,8 +82,11 @@ export const createInvoice = async (req, res, next) => {
 
         // Validate and calculate totals
         let subTotal = 0;
-        let taxTotal = 0;
+        let discountTotal = 0;
         const processedItems = [];
+
+        // Check if discountTotal is provided from frontend (for PharmacyBilling with global discount)
+        const hasGlobalDiscount = req.body.discountTotal !== undefined && req.body.discountTotal !== null;
 
         for (const item of items) {
             let product = null;
@@ -117,12 +97,24 @@ export const createInvoice = async (req, res, next) => {
             const qty = Number(item.qty || item.quantity || 0);
             const rate = Number(item.unitRate || item.price || product?.mrp || product?.sellingPrice || 0);
             const gst = Number(item.gstPct || item.gstPercent || product?.gstPercent || 0);
+            const discountPct = Number(item.discountPct || item.discount || 0);
 
-            const amount = rate * qty;
-            const tax = amount * (gst / 100);
+            // Calculate item amount
+            const itemAmount = rate * qty;
+            let itemDiscount = 0;
+            let taxableAmount = itemAmount;
 
-            subTotal += amount;
-            taxTotal += tax;
+            if (hasGlobalDiscount) {
+                // Global discount will be applied later, item amount is full
+                taxableAmount = itemAmount;
+            } else {
+                // Item-level discount
+                itemDiscount = itemAmount * (discountPct / 100);
+                taxableAmount = itemAmount - itemDiscount;
+                discountTotal += itemDiscount;
+            }
+
+            subTotal += itemAmount;
 
             processedItems.push({
                 drug: product?._id || null,
@@ -131,12 +123,70 @@ export const createInvoice = async (req, res, next) => {
                 qty: qty,
                 unitRate: rate,
                 gstPct: gst,
-                amount: amount,
+                discountPct: discountPct,
+                amount: taxableAmount, // Taxable amount (before global discount if any)
                 mrp: item.mrp || product?.mrp || rate
             });
         }
 
-        const netPayable = Math.round(subTotal + taxTotal);
+        // Apply global discount if provided
+        if (hasGlobalDiscount) {
+            discountTotal = Number(req.body.discountTotal);
+        }
+
+        // Calculate taxable amount (subtotal - discount)
+        const taxableAmount = subTotal - discountTotal;
+
+        // Determine if inter-state (default to intra-state if not specified)
+        const isInterState = req.body.isInterState === true;
+        const placeOfSupply = req.body.placeOfSupply || '';
+        
+        // Calculate GST breakdown
+        let cgst = 0;
+        let sgst = 0;
+        let igst = 0;
+        let taxTotal = 0;
+
+        // Check if manual tax is provided
+        if (req.body.taxTotal !== undefined && req.body.taxTotal !== null) {
+            // Use manual tax amount
+            taxTotal = Number(req.body.taxTotal);
+            if (isInterState) {
+                igst = taxTotal;
+            } else {
+                cgst = taxTotal / 2;
+                sgst = taxTotal / 2;
+            }
+        } else {
+            // Auto calculate tax for each item based on taxable amount
+            for (const item of processedItems) {
+                const itemTaxableAmount = item.amount;
+                const itemTax = (itemTaxableAmount * (item.gstPct || 0)) / 100;
+                
+                if (isInterState) {
+                    // Inter-state: IGST only
+                    igst += itemTax;
+                } else {
+                    // Intra-state: CGST + SGST (split equally)
+                    cgst += itemTax / 2;
+                    sgst += itemTax / 2;
+                }
+                taxTotal += itemTax;
+            }
+        }
+
+        // Smart rounding: round to nearest whole number (no paise)
+        // If decimal > 0.5, round up; if <= 0.5, round down
+        const totalBeforeRoundOff = taxableAmount + taxTotal;
+        const decimalPart = totalBeforeRoundOff - Math.floor(totalBeforeRoundOff);
+        let netPayable;
+        if (decimalPart > 0.5) {
+            netPayable = Math.ceil(totalBeforeRoundOff); // Round up
+        } else {
+            netPayable = Math.floor(totalBeforeRoundOff); // Round down
+        }
+        const roundOff = netPayable - totalBeforeRoundOff;
+        
         const paidAmount = req.body.paid !== undefined ? Number(req.body.paid) : netPayable;
         const balanceAmount = netPayable - paidAmount;
 
@@ -157,11 +207,20 @@ export const createInvoice = async (req, res, next) => {
                     customerPhone,
                     items: processedItems,
                     subTotal,
+                    discountTotal,
                     taxTotal,
+                    cgst: Math.round(cgst * 100) / 100,
+                    sgst: Math.round(sgst * 100) / 100,
+                    igst: Math.round(igst * 100) / 100,
+                    roundOff: Math.round(roundOff * 100) / 100,
                     netPayable,
                     paid: paidAmount,
                     balance: balanceAmount > 0 ? balanceAmount : 0,
                     mode: mode || 'CASH',
+                    billType: req.body.billType || 'TAX_INVOICE',
+                    pdfType: req.body.pdfType || 'STANDARD',
+                    isInterState: isInterState,
+                    placeOfSupply: placeOfSupply,
                     createdBy: req.user._id,
                     notes,
                 });
